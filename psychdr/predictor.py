@@ -153,7 +153,6 @@ class PsychDRPredictor:
     def _infer_mesh_from_description(self, description):
         """【未知突变体专用】通过 BioBERT 相似度匹配最接近的已知疾病及其 MeSH"""
         desc_vec = self._encode_description(description)
-        # 计算余弦相似度 (因为都已 L2 归一化，点积即为余弦相似度)
         sim_scores = torch.matmul(desc_vec, self.bg_bert_tensor.T).squeeze(0)
         
         best_idx = torch.argmax(sim_scores).item()
@@ -174,7 +173,6 @@ class PsychDRPredictor:
         desc_vec = self._encode_description(text_to_encode).cpu().numpy().flatten()
         
         # 2. 级联确定 MeSH Tree Number
-        # 2. 级联确定 MeSH Tree Number
         mesh_tree = []
         is_valid_disease_mesh = False
         
@@ -188,15 +186,12 @@ class PsychDRPredictor:
             )
             mapped_trees = mapped_dict.get(new_disease_name, [])
             
-            # 🌟 核心修改：严格检查匹配到的 Tree 是否属于疾病 (C) 或精神疾病 (F)
             if mapped_trees:
-                # 只要里面有一个树号是 C 或 F 开头，才认作是真正的已知疾病
                 if any(t.startswith('C') or t.startswith('F') for t in mapped_trees):
                     print(f"✅ [已知疾病] 匹配到有效的疾病 MeSH Tree: {mapped_trees}")
                     mesh_tree = mapped_trees
                     is_valid_disease_mesh = True
                 else:
-                    # 如果匹配到的是 B (物种) 或 D (化学物质) 等，直接抛弃
                     print(f"⚠️ 名字 [{new_disease_name}] 匹配到了非疾病实体 (如物种): {mapped_trees}。已忽略！")
             
             # 如果没有匹配到有效的疾病树号，强制走 BioBERT 描述匹配
@@ -211,13 +206,10 @@ class PsychDRPredictor:
         if mesh_tree:
             self.disease_to_mesh_fuzzy[new_disease_name] = mesh_tree
         
-        # 🌟【核心修改】为了兼容旧版函数里没传参的 w_protein 和 w_mesh，
-        # 我们通过模块导入，临时给 inference 模块注入全局变量
         import psychdr.inference as inference_module
         inference_module.w_protein = self.w_protein
         inference_module.w_mesh = self.w_mesh
 
-        # 3. 调用旧版底层推荐函数（严格按照你原本的参数列表）
         new_disease_emb,tcm, non_tcm,all_tcm,all_non_tcm,similar_disease_info,sim_idx,topk_vals,gate = predict_new_disease_drugs(
             new_disease_name=new_disease_name,
             disease_bert_vec=desc_vec,

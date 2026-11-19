@@ -9,7 +9,7 @@ def main():
     MESH_XML = "./data/desc2025.xml"
     GENE_SCORE = "./data/NND_gene_score.xlsx"
     TCM_LIST = "./data/TCM_ingredient_smiles_all_1104.csv"
-    BIOBERT_PATH = "dmis-lab/biobert-base-cased-v1.1" # 让 transformers 自动下载
+    BIOBERT_PATH = "dmis-lab/biobert-base-cased-v1.1" 
     BERT_CSV = "./data/disease_nodes_biobert_cls_features_20261104.csv"    
 
     # 2. 初始化引擎
@@ -44,7 +44,7 @@ def main():
     print("中药推荐 Top 5:", results_pd["TCM"][:5])
     
     # ==========================================
-    # 场景 B：测试未知突变体 (Tcf20 Mutant)
+    # 场景 B：测试未知突变体 (Shank3 Mutant)
     # ==========================================
     print("\n" + "="*50)
     print("测试场景 B：未知突变体 (模拟)")
@@ -52,15 +52,15 @@ def main():
     
     # 为了演示，换成自闭症/神经发育相关的基因
     dummy_df = pd.DataFrame({'gene_symbol': ['TCF20', 'SHANK3', 'MECP2', 'PTEN', 'CHD8']})    
-    results_tcf20 = engine.predict(
-        new_disease_name="Tcf20_KO_Model_XYZ",
+    results_Shank3 = engine.predict(
+        new_disease_name="Shank3_KO_Model",
         description="The mouse exhibits social deficits, repetitive behavior, anxiety, and cognitive impairment, which are typical autism-like phenotypes.",
         deg_df=dummy_df,
         top_k=10
     )
     
-    print("\n非中药推荐 Top 5:", results_tcf20["Non_TCM"][:5])
-    print("中药推荐 Top 5:", results_tcf20["TCM"][:5])
+    print("\n非中药推荐 Top 5:", results_Shank3["Non_TCM"][:5])
+    print("中药推荐 Top 5:", results_Shank3["TCM"][:5])
 
 if __name__ == "__main__":
     main()

@@ -45,7 +45,6 @@ def forward_new_disease_only(
     return h
 
 
-# 分开中药/非中药推荐的代码（保持原参数，仅修复依赖）
 def predict_new_disease_drugs(
         new_disease_name,
         disease_bert_vec,
@@ -68,9 +67,8 @@ def predict_new_disease_drugs(
         drug_top_k=10,
         disease_sim_k=2,
         device="cpu",
-        **kwargs): # 👈 接收可能额外传进来的变量
+        **kwargs): 
     
-    # 🌟 魔法：由于原代码里用了 w_protein/w_mesh，但参数里没定义，我们从 kwargs 里接住，如果没传就给默认值
     w_protein = kwargs.get('w_protein', 0.5)
     w_mesh = kwargs.get('w_mesh', 0.5)
     w_drug = kwargs.get('w_drug', 0.0)
@@ -98,7 +96,6 @@ def predict_new_disease_drugs(
     present_proteins=[]
     for g in genes:
         g=g.upper()
-        # 只要在 id_map 里即可，不需要再通过 protein_feat.index 判断，避免 Tensor 没有 index 报错
         if g in id_map_new['Protein']:
             present_proteins.append(g)
             continue
@@ -162,7 +159,6 @@ def predict_new_disease_drugs(
     ####################################################
     # Step4 edge dict
     ####################################################
-    # 🌟 修复：新版的 utils 需要传入 data_new
     edge_dict=build_edge_index_dicts_zero_shot(data_new, ddi_train_edges)
     edge_dict_new=[]
     for ed in edge_dict:
@@ -214,7 +210,6 @@ def predict_new_disease_drugs(
         (1,n_old),
         dtype=np.float32
     )
-    # 因为我们在 predictor.py 里提前塞进去了，这里直接查字典即可
     t1=disease_to_mesh_fuzzy.get(new_disease_name, [])
     for j,d_old in enumerate(disease_names):
         t2=disease_to_mesh_fuzzy.get(
@@ -227,7 +222,6 @@ def predict_new_disease_drugs(
         )
 
 
-    # 🌟 新增：打印核心调试信息
     print("\n===== 相似度明细 Debug =====")
     top_prot_idx = np.argsort(protein_sim[0])[::-1][:2]
     for idx in top_prot_idx:

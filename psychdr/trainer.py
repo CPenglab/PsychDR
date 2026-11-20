@@ -40,20 +40,16 @@ def train_one_epoch(ddi_edge_train, edge_index_dicts_train, feature_reducer, mod
     pos_score = predictor(h_dict['drug'][pos_src], h_dict['disease'][pos_dst])
     if neg_src.numel() > 0:
         neg_score = predictor(h_dict['drug'][neg_src], h_dict['disease'][neg_dst])
-        # ===== BCE loss =====
         labels = torch.cat([
             torch.ones_like(pos_score),
             torch.zeros_like(neg_score)
         ])
         scores = torch.cat([pos_score, neg_score])
         bce_loss = bce_loss_fn(scores, labels)
-        # ===== Ranking loss (BPR) =====
-        # 对齐正负样本（随机匹配）
         min_len = min(len(pos_score), len(neg_score))
         pos_sample = pos_score[:min_len]
         neg_sample = neg_score[:min_len]
         rank_loss = bpr_loss_fn(pos_sample, neg_sample)
-        # ===== 总 loss =====
         loss = bce_loss + lambda_rank * rank_loss
     else:
         loss = bce_loss_fn(pos_score, torch.ones_like(pos_score))

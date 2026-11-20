@@ -27,9 +27,6 @@ def forward_new_disease_only(
         k: v + model.residuals[k]
         for k, v in h.items()
     }
-    # ====================================
-    # 只融合最后一个疾病节点
-    # ====================================
     h_d = h['disease']
     new_id = h_d.size(0) - 1
     neigh = h_d[sim_idx[0]]            # (k,H)
@@ -196,7 +193,6 @@ def predict_new_disease_drugs(
             w_inter/w_union
         )
     ####################################################
-    # Step6 Mesh similarity
     ####################################################
     mesh_sim=np.zeros(
         (1,n_old),
@@ -339,8 +335,6 @@ def predict_new_disease_drugs(
         new_id=h_dis.size(0)-1
         disease_emb=h_dis[new_id]
         ####################################################
-        # Step9 Separate TCM / non-TCM prediction
-        # 中药和非中药分别进入 predictor
         ####################################################
         drug_names=[
             drug_idx_to_name[i]
@@ -357,7 +351,6 @@ def predict_new_disease_drugs(
             if d not in chinese_medicine_set
         ]
         ################################################
-        # Step10 TCM scoring (Affine logit calibration)
         ################################################
         tcm_result=[]
         if len(tcm_idx)>0:
@@ -391,15 +384,11 @@ def predict_new_disease_drugs(
         print("Min :", logit_df["Logit"].min())
         print("Max :", logit_df["Logit"].max())
         # ==========================================
-        # Affine logit calibration
-        # score = sigmoid(alpha * logit + beta)
         # ==========================================
         z = tcm_logits.squeeze()
         mean = z.mean()
         std = z.std() + 1e-8
-        # Z-score normalization
         z_norm = (z - mean) / std
-        # Calibration parameters
         gamma = 0.8
         delta = 0.5
         z_cal = gamma * z_norm + delta
@@ -420,7 +409,6 @@ def predict_new_disease_drugs(
             reverse=True
         )
         ####################################################
-        # Step11 non-TCM scoring
         ####################################################
         non_tcm_result=[]
         if len(non_tcm_idx)>0:
@@ -441,7 +429,6 @@ def predict_new_disease_drugs(
                 non_tcm_dis_emb
             )
             ################################################
-            # 与旧推荐代码完全一致
             ################################################
             non_tcm_scores=torch.sigmoid(non_tcm_logits/2)
             non_tcm_scores=non_tcm_scores.squeeze()
@@ -461,18 +448,12 @@ def predict_new_disease_drugs(
                 reverse=True
             )
     ####################################################
-    # Step12 return
     ####################################################
     return (
-        # 新疾病embedding
         h_dis[new_id].cpu().numpy(),
-        # 中药TopK
         tcm_result[:drug_top_k],
-        # 非中药TopK
         non_tcm_result[:drug_top_k],
-        # 全部中药排序
         tcm_result,
-        # 全部非中药排序
         non_tcm_result,
         similar_disease_info,
         sim_idx.cpu().numpy(),

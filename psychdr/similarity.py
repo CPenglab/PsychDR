@@ -5,7 +5,6 @@ import re
 from collections import defaultdict, deque, Counter
 from psychdr.utils import normalize_matrix_minmax
 
-# ================= 1. 基于蛋白的疾病相似度 =================
 def compute_protein_similarity(disease_names, protein_set, edges, df_gene_score, alpha=1.0, beta=0.7, gamma=0.5, max_steps=3):
     seed_proteins = set(df_gene_score["gene_symbol"].tolist()) & protein_set
     disease_to_protein = defaultdict(set)
@@ -66,7 +65,6 @@ def compute_protein_similarity(disease_names, protein_set, edges, df_gene_score,
             sim_matrix_np[i, j] = sim_matrix_np[j, i] = sim
     return sim_matrix_np
 
-# ================= 2. 基于 MeSH 的疾病相似度 =================
 def parse_mesh_with_synonyms(xml_path):
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -106,7 +104,6 @@ def mesh_level_similarity(tree1, tree2):
         anc = set()
         for tn in tns:
             parts = tn.split('.')
-            # 🔥 修复：这里原来的大写 I 改成了小写 i
             for i in range(1, len(parts)+1): 
                 anc.add('.'.join(parts[:i]))
         return anc
@@ -168,7 +165,6 @@ def compute_mesh_similarity(disease_names, mesh_xml_path):
             sim_matrix[i,j] = mesh_level_similarity(disease_to_mesh[d1], disease_to_mesh[d2])
     return sim_matrix, disease_to_mesh
 
-# ================= 3. Top-K 与门控 =================
 def compute_topk_and_gate(multi_sim_np, top_k=2):
     sim = torch.tensor(multi_sim_np, dtype=torch.float32)
     if sim.shape[0] == sim.shape[1]:
@@ -180,11 +176,9 @@ def compute_topk_and_gate(multi_sim_np, top_k=2):
     sum_vals = topk_vals.sum(dim=1, keepdim=True) + 1e-12
     norm_wts = topk_vals / sum_vals
     avg_sim = topk_vals.mean(dim=1)
-    
     gate_c = torch.clamp(avg_sim, min=0.1, max=0.9).unsqueeze(1)
     return topk_idx.long(), topk_vals.float(), norm_wts.float(), gate_c.float()
 
-# ================= 4. Fuzzy MeSH 匹配 =================
 def fuzzy_map_disease_to_mesh_tns(
         disease_list, mesh_name_index, mesh_info, token_to_uis,
         min_token_overlap_ratio=0.5):
@@ -195,12 +189,10 @@ def fuzzy_map_disease_to_mesh_tns(
     }
     for dn in disease_list:
         dn_norm = normalize_name(dn)
-        # ① 精确或同义词匹配
         if dn_norm in mesh_name_index:
             ui = mesh_name_index[dn_norm]
             mapping[dn] = mesh_info[ui]["tree_numbers"]
             continue
-        # ② substring
         found_ui = None
         for kname, ui in mesh_name_index.items():
             if dn_norm in kname or kname in dn_norm:
@@ -209,7 +201,6 @@ def fuzzy_map_disease_to_mesh_tns(
         if found_ui:
             mapping[dn] = mesh_info[found_ui]["tree_numbers"]
             continue
-        # ③ token overlap
         tks = tokens(dn)
         if not tks:
             mapping[dn] = []
@@ -230,6 +221,5 @@ def fuzzy_map_disease_to_mesh_tns(
         else:
             mapping[dn] = []
             not_found.append(dn)
-    
     print(f"🔎 fuzzy MeSH 匹配成功 {len(disease_list)-len(not_found)} / {len(disease_list)}")
     return mapping

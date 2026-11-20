@@ -25,6 +25,7 @@ DEG_FILE = ""
 
 TOP_K = 10
 P_VALUE_THRESHOLD = 0.05
+DEVICE = "cpu"
 
 # Output directory
 PROJECT_ROOT = os.path.dirname(
@@ -256,7 +257,7 @@ def main():
             "disease_features.csv"
         ),
 
-        device="cpu"
+        device=DEVICE
     )
 
     # --------------------------------------------------------

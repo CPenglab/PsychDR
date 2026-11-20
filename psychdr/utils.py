@@ -29,7 +29,6 @@ def get_edge_index(data_obj, edge_key):
 def build_edge_index_dicts_zero_shot(data, ddi_train_edges):
     """构建用于零样本/少样本测试的边字典列表"""
     
-    # 如果 utils 里没有 get_edge_index，记得把它也加上（或者 import）
     def get_edge_index(data_obj, edge_key):
         edge_data = data_obj[edge_key]
         if hasattr(edge_data, 'edge_index'):
@@ -78,7 +77,6 @@ def augment_ddi_train_with_chinese(ddi_train, chinese_drug_ids, repeat_times=5):
     for d_id in chinese_drug_ids:
         mask = ddi_train_np[0] == d_id
         if mask.sum() > 0:
-            # 重复采样 repeat_times 次
             for _ in range(repeat_times):
                 extra_edges.append(ddi_train_np[:, mask])
     if extra_edges:

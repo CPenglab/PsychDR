@@ -7,7 +7,6 @@ from collections import defaultdict
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
 
-# 导入你自己包里的模块
 from psychdr.models import FeatureReducer, HGTWithDiseaseSim, LinkPredictor
 from psychdr.data_loader import build_hetero_data
 from psychdr.similarity import (
@@ -16,9 +15,6 @@ from psychdr.similarity import (
     compute_topk_and_gate
 )
 
-# ============================================================
-# 1. 配置路径与参数 (请替换为你本地的实际路径)
-# ============================================================
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -30,13 +26,10 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device:", DEVICE)
 
 # 请修改为你当前的数据存放根目录
-MESH_XML_PATH = "/public/home/liyu/run_R/PsychDR/data/desc2025.xml"
-GENE_SCORE_PATH = "/public/home/liyu/run_R/PsychDR/data/NND_gene.xlsx"
-TCM_LIST_PATH = "/public/home/liyu/run_R/PsychDR/data/TCM.csv"
+MESH_XML_PATH = "data/desc2025.xml"
+GENE_SCORE_PATH = "data/NND_gene.xlsx"
+TCM_LIST_PATH = "data/TCM.csv"
 
-# ============================================================
-# 2. 辅助函数 (负采样、训练单轮、评估)
-# ============================================================
 def sample_neg_pairs_no_leak(pos_dst, all_positive_set, num_drugs, neg_ratio=1):
     neg_src, neg_dst = [], []
     for d in pos_dst.unique().tolist():
@@ -116,8 +109,8 @@ def evaluate_on_set(ddi_edge_eval, edge_index_dicts_eval, feature_reducer, model
 # 3. 主训练流程
 # ============================================================
 def main():
-    global data # 为了辅助函数能访问到 data
-    DATA_DIR = "/public/home/liyu/run_R/PsychDR/data"
+    global data
+    DATA_DIR = "data"
     print("1. 正在加载图谱数据...")
     data, id_map, nodes, edges = build_hetero_data(
         data_dir=DATA_DIR,
@@ -133,22 +126,18 @@ def main():
     df_gene_score = pd.read_excel(GENE_SCORE_PATH)
     
     print("2. 正在计算疾病相似度...")
-    # 蛋白质相似度
     protein_sim = compute_protein_similarity(disease_names, protein_set, edges, df_gene_score)
-    # MeSH 相似度
     mesh_sim, disease_to_mesh_fuzzy = compute_mesh_similarity(disease_names, MESH_XML_PATH)
     
     print("3. 正在划分训练/测试集并计算药物相似度...")
     ddi_edge_all = data[('drug', 'Drug-Disease', 'disease')].edge_index
     train_diseases, test_diseases = train_test_split(disease_names, test_size=0.20, random_state=SEED)
     
-    # 划分边
     test_ids = [id_map['Disease'][d] for d in test_diseases]
     mask_test = torch.isin(ddi_edge_all[1], torch.tensor(test_ids))
     ddi_train = ddi_edge_all[:, ~mask_test]
     ddi_test = ddi_edge_all[:, mask_test]
     
-    # 计算药物相似度矩阵
     def compute_drug_pairwise_from_ddi(ddi_edges_tensor, n_disease, n_drug):
         ddi_numpy = ddi_edges_tensor.cpu().numpy()
         ddi_mat = np.zeros((n_disease, n_drug), dtype=np.uint8)
@@ -171,7 +160,6 @@ def main():
     protein_sim_norm = normalize_matrix_minmax(protein_sim)
     mesh_sim_norm = normalize_matrix_minmax(mesh_sim)
     
-    # 自动权重
     vars = np.array([np.var(protein_sim_norm), np.var(mesh_sim_norm)], dtype=np.float32)
     view_weights = vars / vars.sum()
     w_protein, w_mesh = view_weights
@@ -179,13 +167,11 @@ def main():
     multi_sim_auto = w_protein * protein_sim_norm + w_mesh * mesh_sim_norm
     disease_sim_idx, _, disease_sim_wts, gate_c = compute_topk_and_gate(multi_sim_auto, top_k=2)
     
-    # 转移到 GPU
     disease_sim_idx_dev = disease_sim_idx.to(DEVICE)
     disease_sim_wts_dev = disease_sim_wts.to(DEVICE)
     gate_c_dev = gate_c.to(DEVICE)
 
     print("5. 准备 TCM 数据增强与模型图结构...")
-    # 读取中药列表并增强
     df_tcm = pd.read_csv(TCM_LIST_PATH, index_col=0)
     chinese_medicines = df_tcm.index.tolist()
     chinese_medicine_set = set(chinese_medicines)
@@ -198,13 +184,11 @@ def main():
         for d_id in chinese_drug_ids:
             mask = ddi_train_np[0] == d_id
             if mask.sum() > 0:
-                # 提取当前中药关联的边（形状为 2 x N）
                 edges_for_this_drug = ddi_train_np[:, mask]
                 for _ in range(repeat_times):
                     extra_edges.append(edges_for_this_drug)
                     
         if extra_edges:
-            # 关键修复：使用 np.concatenate 在列方向（axis=1）拼接所有的边
             extra_edges_np = np.concatenate(extra_edges, axis=1)
             extra_edges_tensor = torch.tensor(extra_edges_np, dtype=torch.long)
             return torch.cat([ddi_train, extra_edges_tensor], dim=1)
@@ -212,7 +196,6 @@ def main():
     
     ddi_train = augment_ddi_train_with_chinese(ddi_train, chinese_drug_ids, repeat_times=5)
     
-    # 构建 Edge Dicts
     def build_edge_index_dicts_zero_shot(ddi_train_edges):
         edge_index_layer1 = {
             ('protein', 'Protein-Disease', 'disease'): data[('protein', 'Protein-Disease', 'disease')].edge_index,
@@ -247,7 +230,6 @@ def main():
         lr=0.001, weight_decay=1e-3
     )
     
-    # 固定评估用负样本
     all_positive_set = set(zip(ddi_edge_all[0].tolist(), ddi_edge_all[1].tolist()))
     train_neg_src, train_neg_dst = sample_neg_pairs_no_leak(ddi_train[1], all_positive_set, data['drug'].num_nodes)
     test_neg_src, test_neg_dst = sample_neg_pairs_no_leak(ddi_test[1], all_positive_set, data['drug'].num_nodes)

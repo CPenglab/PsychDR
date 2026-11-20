@@ -1,4 +1,4 @@
-# PsychDR: Knowledge Graph-Driven Similar Disease Search for Drug Repurposing of Psychiatric Disorders
+# PsychDR: A computational approach of drug repurposing for psychiatric disorders
 
 ## Overview
 

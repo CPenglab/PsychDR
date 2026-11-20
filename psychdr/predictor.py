@@ -8,7 +8,6 @@ from collections import Counter, defaultdict, deque
 from transformers import AutoTokenizer, AutoModel
 from huggingface_hub import snapshot_download
 
-# 导入包内的其他模块
 from psychdr.data_loader import build_hetero_data
 from psychdr.models import FeatureReducer, HGTWithDiseaseSim, LinkPredictor
 from psychdr.similarity import (
@@ -77,7 +76,6 @@ class PsychDRPredictor:
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         print(f"⚙️ 正在初始化 PsychDR 引擎 ({self.device})...")
 
-        # ================= 1. 加载背景图谱 =================
         print("   - 加载异构图数据...")
         self.data, self.id_map, self.nodes, self.edges = build_hetero_data(
             data_dir=data_dir,
@@ -92,14 +90,11 @@ class PsychDRPredictor:
         self.protein_names = list(self.nodes[self.nodes['type'] == "Protein"]["name"])
         self.protein_set = set(self.protein_names)
 
-        # ================= 2. 预计算全局相似度 =================
         print("   - 计算蛋白质相似度...")
         df_gene = pd.read_excel(gene_score_path)
         self.protein_sim = compute_protein_similarity(self.disease_names, self.protein_set, self.edges, df_gene)
 
         print("   - 计算 MeSH 相似度与映射...")
-        # 提取疾病与蛋白映射、权重 (基于背景图)
-        # 提取疾病与蛋白映射、药物靶点和 PPI 网络
         self.disease_to_protein = defaultdict(set)
         drug_target_proteins = set()
         ppi_graph = defaultdict(list)
@@ -117,10 +112,8 @@ class PsychDRPredictor:
                 ppi_graph[p].append(d)
                 ppi_graph[d].append(p)
 
-        # Seed proteins
         seed_proteins = set(df_gene["gene_symbol"].dropna().tolist()) & self.protein_set
 
-        # BFS: 计算药物靶点到 seed proteins 的最短距离
         def bfs_min_dist(start, targets, graph, max_steps=3):
             if start in targets:
                 return 0
@@ -146,7 +139,6 @@ class PsychDRPredictor:
 
             return None
 
-        # 计算药物靶点到 seed proteins 的距离
         drug_target_dist = {}
 
         for p in drug_target_proteins:
@@ -157,7 +149,6 @@ class PsychDRPredictor:
                 max_steps=3
             )
 
-        # 按照原始 notebook 的规则计算蛋白质权重
         self.protein_weights = defaultdict(float)
 
         alpha = 1.0
@@ -167,13 +158,11 @@ class PsychDRPredictor:
         for d in self.disease_names:
             for p in self.disease_to_protein[d]:
 
-                # Rule 1: Disease protein is also a drug target
                 if p in drug_target_proteins:
                     self.protein_weights[p] = max(
                         self.protein_weights[p], alpha
                     )
 
-                # Rule 2: Disease protein directly interacts with a drug target
                 elif any(
                     n in drug_target_proteins
                     for n in ppi_graph.get(p, [])
@@ -182,7 +171,6 @@ class PsychDRPredictor:
                         self.protein_weights[p], beta
                     )
 
-        # Rule 3: Drug targets connected to seed proteins within 3 PPI steps
         for p in drug_target_proteins:
             dist = drug_target_dist[p]
 
@@ -192,7 +180,6 @@ class PsychDRPredictor:
                     gamma / (dist + 1)
                 )
 
-        # 解析 MeSH
         self.mesh_info, self.mesh_name_index = parse_mesh_with_synonyms(mesh_xml_path)
         self.token_to_uis = {}
         for ui, info in self.mesh_info.items():
@@ -204,12 +191,10 @@ class PsychDRPredictor:
                         self.token_to_uis.setdefault(t, set()).add(ui)
                         seen.add(t)
 
-        # 通过名字模糊匹配背景疾病得到 MeSH 字典
         self.disease_to_mesh_fuzzy = fuzzy_map_disease_to_mesh_tns(
             self.disease_names, self.mesh_name_index, self.mesh_info, self.token_to_uis
         )
 
-        # 自动权重
         p_norm = normalize_matrix_minmax(self.protein_sim)
         self.mesh_sim_matrix, _ = compute_mesh_similarity(self.disease_names, mesh_xml_path)
         m_norm = normalize_matrix_minmax(self.mesh_sim_matrix)
@@ -218,7 +203,6 @@ class PsychDRPredictor:
         weights = vars / vars.sum()
         self.w_protein, self.w_mesh = float(weights[0]), float(weights[1])
 
-        # ================= 3. 加载模型与权重 =================
         print("   - 加载预训练模型...")
         node_in_dims = {ntype: self.data[ntype].x.size(1) for ntype in self.data.node_types}
         node_out_dims = {'drug':512, 'protein':256, 'disease':256}
@@ -232,13 +216,10 @@ class PsychDRPredictor:
         self.model.load_state_dict(checkpoint['model'])
         self.predictor.load_state_dict(checkpoint['predictor'])
 
-        # ================= 4. 加载字典与边缘信息 =================
         self.chinese_medicine_set = set(pd.read_csv(tcm_list_path, index_col=0).index.tolist())
         self.drug_idx_to_name = {v: k for k, v in self.id_map['Drug'].items()}
-        # 推理时使用全图边进行拓扑传播
         self.ddi_train_edges = self.data[('drug', 'Drug-Disease', 'disease')].edge_index
 
-        # ================= 5. 加载 BioBERT 与背景向量 =================
         print("   - 加载 BioBERT 编码器与背景疾病向量库...")
         self.bg_bert_df = pd.read_csv(disease_bert_csv_path, index_col=0)
         self.bg_disease_names = self.bg_bert_df.index.tolist()
@@ -258,8 +239,8 @@ class PsychDRPredictor:
         inputs = self.tokenizer([text], return_tensors="pt", truncation=True, padding=True, max_length=max_length)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         outputs = self.bert_model(**inputs)
-        cls_emb = outputs.last_hidden_state[:, 0, :] # 提取 CLS 向量
-        return F.normalize(cls_emb, p=2, dim=1)      # 归一化
+        cls_emb = outputs.last_hidden_state[:, 0, :]
+        return F.normalize(cls_emb, p=2, dim=1)
 
     @torch.no_grad()
     def _infer_mesh_from_description(self, description):
@@ -280,11 +261,9 @@ class PsychDRPredictor:
     def predict(self, new_disease_name, description, deg_df, user_mesh_tree=None, top_k=10):
         print(f"🔮 正在为 [{new_disease_name}] 生成推荐...")
 
-        # 1. 生成 BioBERT 特征向量
         text_to_encode = f"{new_disease_name}: {description}" if description else new_disease_name
         desc_vec = self._encode_description(text_to_encode).cpu().numpy().flatten()
 
-        # 2. 级联确定 MeSH Tree Number
         mesh_tree = []
         is_valid_disease_mesh = False
 
@@ -306,7 +285,6 @@ class PsychDRPredictor:
                 else:
                     print(f"⚠️ 名字 [{new_disease_name}] 匹配到了非疾病实体 (如物种): {mapped_trees}。已忽略！")
 
-            # 如果没有匹配到有效的疾病树号，强制走 BioBERT 描述匹配
             if not is_valid_disease_mesh:
                 if description:
                     print(f"🚀 启动 BioBERT 行为学/表型描述匹配...")
@@ -314,7 +292,6 @@ class PsychDRPredictor:
                 else:
                     print("⚠️ 未提供描述，无法计算 MeSH 相似度。")
 
-        # 将最终算好的 mesh_tree 直接塞进字典
         if mesh_tree:
             self.disease_to_mesh_fuzzy[new_disease_name] = mesh_tree
 

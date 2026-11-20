@@ -45,6 +45,7 @@ def forward_new_disease_only(
     return h
 
 
+
 def predict_new_disease_drugs(
         new_disease_name,
         disease_bert_vec,
@@ -66,18 +67,11 @@ def predict_new_disease_drugs(
         chinese_medicine_set,
         drug_top_k=10,
         disease_sim_k=2,
-        device="cpu",
-        **kwargs): 
-    
-    w_protein = kwargs.get('w_protein', 0.5)
-    w_mesh = kwargs.get('w_mesh', 0.5)
-    w_drug = kwargs.get('w_drug', 0.0)
-
+        device="cpu"):
+    import copy
     data_new = copy.deepcopy(data)
     id_map_new = copy.deepcopy(id_map)
-    
     ####################################################
-    # Step1 DEG -> Protein
     ####################################################
     genes = (
         filtered_df['gene_symbol']
@@ -95,19 +89,21 @@ def predict_new_disease_drugs(
         )
     present_proteins=[]
     for g in genes:
-        g=g.upper()
+        g = g.upper()
         if g in id_map_new['Protein']:
             present_proteins.append(g)
             continue
-        g_std=standardize_gene_name(g)
+        g_std = standardize_gene_name(g)
         if g_std in id_map_new['Protein']:
             present_proteins.append(g_std)
-            
+
+
     present_proteins=list(set(present_proteins))
-    print("matched proteins:", len(present_proteins))
-    
+    print(
+        "matched proteins:",
+        len(present_proteins)
+    )
     ####################################################
-    # Step2 add new disease node
     ####################################################
     old_num_disease=data_new["disease"].x.size(0)
     disease_dim=data_new["disease"].x.size(1)
@@ -124,9 +120,7 @@ def predict_new_disease_drugs(
         dim=0
     )
     id_map_new["Disease"][new_disease_name]=old_num_disease
-    
     ####################################################
-    # Step3 Protein-Disease edge
     ####################################################
     edge_pd=data_new[
         (
@@ -155,11 +149,12 @@ def predict_new_disease_drugs(
             ],
             dim=1
         )
-        
     ####################################################
-    # Step4 edge dict
     ####################################################
-    edge_dict=build_edge_index_dicts_zero_shot(data_new, ddi_train_edges)
+    edge_dict=build_edge_index_dicts_zero_shot(
+        data_new,
+        ddi_train_edges
+    )
     edge_dict_new=[]
     for ed in edge_dict:
         tmp={}
@@ -177,9 +172,7 @@ def predict_new_disease_drugs(
         edge_dict_new,
         device
     )
-    
     ####################################################
-    # Step5 Protein similarity
     ####################################################
     n_old=len(disease_names)
     protein_sim=np.zeros(
@@ -202,7 +195,6 @@ def predict_new_disease_drugs(
         protein_sim[0,j]=(
             w_inter/w_union
         )
-        
     ####################################################
     # Step6 Mesh similarity
     ####################################################
@@ -210,7 +202,10 @@ def predict_new_disease_drugs(
         (1,n_old),
         dtype=np.float32
     )
-    t1=disease_to_mesh_fuzzy.get(new_disease_name, [])
+    t1=disease_to_mesh_fuzzy.get(
+        new_disease_name,
+        []
+    )
     for j,d_old in enumerate(disease_names):
         t2=disease_to_mesh_fuzzy.get(
             d_old,
@@ -220,68 +215,103 @@ def predict_new_disease_drugs(
             t1,
             t2
         )
-
-
-    print("\n===== 相似度明细 Debug =====")
-    top_prot_idx = np.argsort(protein_sim[0])[::-1][:2]
-    for idx in top_prot_idx:
-        print(f"基因最相似疾病: {disease_names[idx]} (Sim: {protein_sim[0][idx]:.4f})")
-    
-    top_mesh_idx = np.argsort(mesh_sim[0])[::-1][:2]
-    for idx in top_mesh_idx:
-        print(f"Mesh最相似疾病: {disease_names[idx]} (Sim: {mesh_sim[0][idx]:.4f})")
-    print("===========================\n")    
-    
     ####################################################
-    # Step7 similarity fusion
     ####################################################
     drug_sim=np.zeros(
         (1,n_old),
         dtype=np.float32
     )
-    protein_sim=normalize_matrix_minmax(
+    print("\n===== Similarity Debug =====")
+    print("Matched proteins:", len(present_proteins))
+    print(
+        "Matched proteins with nonzero weights:",
+        sum(protein_weights.get(p, 0) > 0 for p in present_proteins)
+    )
+    print(
+        "Raw protein similarity:",
+        protein_sim.min(), protein_sim.max(), protein_sim.mean()
+    )
+    print(
+        "Raw MeSH similarity:",
+        mesh_sim.min(), mesh_sim.max(), mesh_sim.mean()
+    )
+    print("============================\n")
+
+    protein_sim = normalize_matrix_minmax(
         protein_sim
     )
-    mesh_sim=normalize_matrix_minmax(
+    mesh_sim = normalize_matrix_minmax(
         mesh_sim
     )
+
     available_views=[]
     available_weights=[]
     if protein_sim.max()>0:
-        available_views.append(protein_sim)
-        available_weights.append(w_protein)
+        available_views.append(
+            protein_sim
+        )
+        available_weights.append(
+            w_protein
+        )
     if mesh_sim.max()>0:
-        available_views.append(mesh_sim)
-        available_weights.append(w_mesh)
+        available_views.append(
+            mesh_sim
+        )
+        available_weights.append(
+            w_mesh
+        )
     if drug_sim.max()>0:
-        available_views.append(drug_sim)
-        available_weights.append(w_drug)
-        
+        available_views.append(
+            drug_sim
+        )
+        available_weights.append(
+            w_drug
+        )
     if len(available_views)==0:
-        multi_sim=np.zeros((1,n_old), dtype=np.float32)
+        multi_sim=np.zeros(
+            (1,n_old),
+            dtype=np.float32
+        )
     else:
-        available_weights=np.array(available_weights, dtype=np.float32)
-        available_weights=(available_weights/available_weights.sum())
-        multi_sim=np.zeros((1,n_old), dtype=np.float32)
-        for w,view in zip(available_weights, available_views):
+        available_weights=np.array(
+            available_weights,
+            dtype=np.float32
+        )
+        available_weights=(
+            available_weights/
+            available_weights.sum()
+        )
+        multi_sim=np.zeros(
+            (1,n_old),
+            dtype=np.float32
+        )
+        for w,view in zip(
+            available_weights,
+            available_views
+        ):
             multi_sim += w*view
-            
     sim_idx,topk_vals,sim_wts,gate=compute_topk_and_gate(
         multi_sim,
-        top_k=min(disease_sim_k, n_old)
+        top_k=min(
+            disease_sim_k,
+            n_old
+        )
     )
     sim_idx=sim_idx.to(device)
     sim_wts=sim_wts.to(device)
     gate=gate.to(device)
-    
     similar_disease_info=[]
-    for idx,sim in zip(sim_idx[0].cpu().numpy(), topk_vals[0].cpu().numpy()):
-        similar_disease_info.append({
-            "Disease": disease_names[idx],
-            "Similarity": float(sim)
-        })
+    for idx,sim in zip(
+        sim_idx[0].cpu().numpy(),
+        topk_vals[0].cpu().numpy()
+    ):
+        similar_disease_info.append(
+            {
+                "Disease": disease_names[idx],
+                "Similarity": float(sim)
+            }
+    )
     print(pd.DataFrame(similar_disease_info))
-    
     ####################################################
     # Step8 HGT forward
     ####################################################
@@ -289,85 +319,160 @@ def predict_new_disease_drugs(
     model.eval()
     predictor.eval()
     with torch.no_grad():
-        x_raw={k:data_new[k].x.to(device) for k in data_new.node_types}
-        x=feature_reducer(x_raw)
+        x_raw={
+            k:data_new[k].x.to(device)
+            for k in data_new.node_types
+        }
+        x=feature_reducer(
+            x_raw
+        )
         h=forward_new_disease_only(
-            model, x, edge_dict_new, sim_idx, sim_wts, gate
+            model,
+            x,
+            edge_dict_new,
+            sim_idx,
+            sim_wts,
+            gate
         )
         h_drug=h["drug"]
         h_dis=h["disease"]
         new_id=h_dis.size(0)-1
         disease_emb=h_dis[new_id]
-        
         ####################################################
         # Step9 Separate TCM / non-TCM prediction
+        # 中药和非中药分别进入 predictor
         ####################################################
-        drug_names=[drug_idx_to_name[i] for i in range(len(drug_idx_to_name))]
-        tcm_idx=[i for i,d in enumerate(drug_names) if d in chinese_medicine_set]
-        non_tcm_idx=[i for i,d in enumerate(drug_names) if d not in chinese_medicine_set]
-        
+        drug_names=[
+            drug_idx_to_name[i]
+            for i in range(len(drug_idx_to_name))
+        ]
+        tcm_idx=[
+            i
+            for i,d in enumerate(drug_names)
+            if d in chinese_medicine_set
+        ]
+        non_tcm_idx=[
+            i
+            for i,d in enumerate(drug_names)
+            if d not in chinese_medicine_set
+        ]
         ################################################
         # Step10 TCM scoring (Affine logit calibration)
         ################################################
         tcm_result=[]
         if len(tcm_idx)>0:
-            tcm_idx_tensor=torch.tensor(tcm_idx, dtype=torch.long, device=device)
-            tcm_emb=h_drug[tcm_idx_tensor]
-            tcm_dis_emb=disease_emb.repeat(tcm_emb.size(0), 1)
-            
-            tcm_logits=predictor(tcm_emb, tcm_dis_emb)
-            
-            logit_df = pd.DataFrame({
-                "Drug": [drug_names[i] for i in tcm_idx],
-                "Logit": tcm_logits.squeeze().detach().cpu().numpy()
-            }).sort_values("Logit", ascending=False)
-            
-            print("\n===== TCM Logit Distribution =====")
-            print(logit_df.head(15))
-            print(logit_df.tail(10))
-            print("Mean:", logit_df["Logit"].mean())
-            print("Std :", logit_df["Logit"].std())
-            
-            z = tcm_logits.squeeze()
-            mean = z.mean()
-            std = z.std() + 1e-8
-            z_norm = (z - mean) / std
-            gamma = 0.8
-            delta = 0.5
-            z_cal = gamma * z_norm + delta
-            tcm_scores = torch.sigmoid(z_cal).squeeze()
-            
-            tcm_result = sorted(
-                [(drug_names[i], float(score)) for i, score in zip(tcm_idx, tcm_scores.cpu().numpy())],
-                key=lambda x: x[1], reverse=True
+            tcm_idx_tensor=torch.tensor(
+                tcm_idx,
+                dtype=torch.long,
+                device=device
             )
-            
+            tcm_emb=h_drug[
+                tcm_idx_tensor
+            ]
+            tcm_dis_emb=disease_emb.repeat(
+                tcm_emb.size(0),
+                1
+            )
+        # predictor logits
+        tcm_logits=predictor(
+            tcm_emb,
+            tcm_dis_emb
+        )
+        # ===== Debug: 查看 TCM logit 分布 =====
+        logit_df = pd.DataFrame({
+            "Drug": [drug_names[i] for i in tcm_idx],
+            "Logit": tcm_logits.squeeze().detach().cpu().numpy()
+        }).sort_values("Logit", ascending=False)
+        print("\\n===== TCM Logit Distribution =====")
+        print(logit_df.head(15))
+        print(logit_df.tail(10))
+        print("Mean:", logit_df["Logit"].mean())
+        print("Std :", logit_df["Logit"].std())
+        print("Min :", logit_df["Logit"].min())
+        print("Max :", logit_df["Logit"].max())
+        # ==========================================
+        # Affine logit calibration
+        # score = sigmoid(alpha * logit + beta)
+        # ==========================================
+        z = tcm_logits.squeeze()
+        mean = z.mean()
+        std = z.std() + 1e-8
+        # Z-score normalization
+        z_norm = (z - mean) / std
+        # Calibration parameters
+        gamma = 0.8
+        delta = 0.5
+        z_cal = gamma * z_norm + delta
+        tcm_scores = torch.sigmoid(z_cal)
+        tcm_scores = tcm_scores.squeeze()
+        tcm_result = sorted(
+            [
+                (
+                    drug_names[i],
+                    float(score)
+                )
+                for i, score in zip(
+                    tcm_idx,
+                    tcm_scores.cpu().numpy()
+                )
+            ],
+            key=lambda x: x[1],
+            reverse=True
+        )
         ####################################################
         # Step11 non-TCM scoring
         ####################################################
         non_tcm_result=[]
         if len(non_tcm_idx)>0:
-            non_tcm_idx_tensor=torch.tensor(non_tcm_idx, dtype=torch.long, device=device)
-            non_tcm_emb=h_drug[non_tcm_idx_tensor]
-            non_tcm_dis_emb=disease_emb.repeat(non_tcm_emb.size(0), 1)
-            
-            non_tcm_logits=predictor(non_tcm_emb, non_tcm_dis_emb)
-            non_tcm_scores=torch.sigmoid(non_tcm_logits/2).squeeze()
-            non_tcm_scores=non_tcm_scores ** 0.5
-            
-            non_tcm_result=sorted(
-                [(drug_names[i], float(score)) for i, score in zip(non_tcm_idx, non_tcm_scores.cpu().numpy())],
-                key=lambda x:x[1], reverse=True
+            non_tcm_idx_tensor=torch.tensor(
+                non_tcm_idx,
+                dtype=torch.long,
+                device=device
             )
-            
+            non_tcm_emb=h_drug[
+                non_tcm_idx_tensor
+            ]
+            non_tcm_dis_emb=disease_emb.repeat(
+                non_tcm_emb.size(0),
+                1
+            )
+            non_tcm_logits=predictor(
+                non_tcm_emb,
+                non_tcm_dis_emb
+            )
+            ################################################
+            # 与旧推荐代码完全一致
+            ################################################
+            non_tcm_scores=torch.sigmoid(non_tcm_logits/2)
+            non_tcm_scores=non_tcm_scores.squeeze()
+            non_tcm_scores=non_tcm_scores ** 0.5
+            non_tcm_result=sorted(
+                [
+                    (
+                        drug_names[i],
+                        float(score)
+                    )
+                    for i,score in zip(
+                        non_tcm_idx,
+                        non_tcm_scores.cpu().numpy()
+                    )
+                ],
+                key=lambda x:x[1],
+                reverse=True
+            )
     ####################################################
     # Step12 return
     ####################################################
     return (
+        # 新疾病embedding
         h_dis[new_id].cpu().numpy(),
+        # 中药TopK
         tcm_result[:drug_top_k],
+        # 非中药TopK
         non_tcm_result[:drug_top_k],
+        # 全部中药排序
         tcm_result,
+        # 全部非中药排序
         non_tcm_result,
         similar_disease_info,
         sim_idx.cpu().numpy(),

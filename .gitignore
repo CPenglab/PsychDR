@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Large data files (download separately)
+data/desc2025.xml
+data/protein_features.csv
+
+# BioBERT model weights (download separately)
+pretrained_models/biobert-base-cased-v1.1/pytorch_model.bin
+
+# Prediction outputs and logs
+*.log
+*_predictions.csv
+*.backup

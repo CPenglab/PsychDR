@@ -30,10 +30,9 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device:", DEVICE)
 
 # 请修改为你当前的数据存放根目录
-DATA_ROOT = "/public/home/liyu/Disease_drug/TXGNN/indication/No repeat mental illness" 
-MESH_XML_PATH = "/public/home/liyu/Disease_drug/TXGNN/desc2025.xml"
-GENE_SCORE_PATH = "/public/home/liyu/Disease_drug/TXGNN/NND_gene_score.xlsx"
-TCM_LIST_PATH = os.path.join(DATA_ROOT, "Traditional_Chinese_Medicine_Database/20260522/TCM_ingredient_smiles_all_1104.csv")
+MESH_XML_PATH = "/public/home/liyu/run_R/PsychDR/data/desc2025.xml"
+GENE_SCORE_PATH = "/public/home/liyu/run_R/PsychDR/data/NND_gene.xlsx"
+TCM_LIST_PATH = "/public/home/liyu/run_R/PsychDR/data/TCM.csv"
 
 # ============================================================
 # 2. 辅助函数 (负采样、训练单轮、评估)
@@ -118,17 +117,16 @@ def evaluate_on_set(ddi_edge_eval, edge_index_dicts_eval, feature_reducer, model
 # ============================================================
 def main():
     global data # 为了辅助函数能访问到 data
-    
+    DATA_DIR = "/public/home/liyu/run_R/PsychDR/data"
     print("1. 正在加载图谱数据...")
     data, id_map, nodes, edges = build_hetero_data(
-        data_dir=os.path.join(DATA_ROOT, "new_kg_20261109"),
-        drug_feat_file="drug_features_ecfp2048_20261109_548.csv",
-        protein_feat_file="/public/home/liyu/Disease_drug/TXGNN/indication/No repeat mental illness/new_kg/protein_go_features.csv", 
-        disease_feat_file="/public/home/liyu/Disease_drug/TXGNN/indication/No repeat mental illness/new_kg_20261103/disease_nodes_biobert_cls_features_20261104.csv",
-        nodes_file="node_20261109.csv",
-        edges_file="edge_20261109_final.csv"
+        data_dir=DATA_DIR,
+        drug_feat_file="drug_features.csv",
+        protein_feat_file="protein_features.csv",
+        disease_feat_file="disease_features.csv",
+        nodes_file="node.csv",
+        edges_file="edge.csv"
     )
-    
     disease_names = list(nodes[nodes['type'] == "Disease"]["name"])
     protein_names = list(nodes[nodes['type'] == "Protein"]["name"])
     protein_set = set(protein_names)

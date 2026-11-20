@@ -181,8 +181,7 @@ def compute_topk_and_gate(multi_sim_np, top_k=2):
     norm_wts = topk_vals / sum_vals
     avg_sim = topk_vals.mean(dim=1)
     
-    # 🔥 修复：这里必须加上 1.0 - avg_sim，否则门控逻辑完全反了
-    gate_c = torch.clamp(1.0 - avg_sim, min=0.1, max=0.9).unsqueeze(1)
+    gate_c = torch.clamp(avg_sim, min=0.1, max=0.9).unsqueeze(1)
     return topk_idx.long(), topk_vals.float(), norm_wts.float(), gate_c.float()
 
 # ================= 4. Fuzzy MeSH 匹配 =================

@@ -11,7 +11,6 @@ def set_seed(seed=42):
         torch.cuda.manual_seed_all(seed)
 
 def normalize_matrix_minmax(mat):
-    """矩阵 Min-Max 归一化"""
     _min, _max = mat.min(), mat.max()
     if _max - _min < 1e-9:
         return np.zeros_like(mat)
@@ -27,7 +26,6 @@ def get_edge_index(data_obj, edge_key):
     else:
         raise AttributeError(f"No edge_index found for {edge_key}")
 
-# 把其他的通用函数也加进来... (比如 build_edge_index_dicts_zero_shot, move_edge_index_dicts_to_device)
 def build_edge_index_dicts_zero_shot(data, ddi_train_edges):
     """构建用于零样本/少样本测试的边字典列表"""
     

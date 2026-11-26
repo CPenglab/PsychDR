@@ -113,12 +113,19 @@ PsychDR/
 | `desc2025.xml` | MeSH descriptor data used for disease name matching and semantic similarity calculation | NLM |
 
 #### 1. Protein features
+The protein-level Gene Ontology (GO) feature matrix used in the PsychDR framework is publicly available on Zenodo.
 
-The `protein_features.csv` file contains protein feature representations required for constructing the heterogeneous knowledge graph.
+Dataset: Protein-level Gene Ontology Features for the PsychDR Framework
 
-Download the file from the following location:
+File: protein_features.csv
 
-**Download:** [Protein feature data](<PROTEIN_FEATURES_DOWNLOAD_URL>)
+Zenodo DOI: 10.5281/zenodo.24389563
+
+Dataset URL: https://zenodo.org/records/24389563
+
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+The dataset provides GO-based functional feature representations for protein nodes in the PsychDR knowledge graph.
 
 After downloading, place it in:
 
